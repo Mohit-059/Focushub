@@ -117,7 +117,7 @@ function PlaceholderTab({ icon: Icon, title, message }) {
 export default function TrackerPanel() {
   const tabs = [
     { label: 'Deadlines', content: <DeadlinesTab /> },
-    { label: 'Retention', content: <PlaceholderTab icon={Brain} title="Retention Engine" message="Recall and study-retention history will appear here once the Memory Lab module is completed in Part 2." /> },
+    // { label: 'Retention', content: <PlaceholderTab icon={Brain} title="Retention Engine" message="Recall and study-retention history will appear here once the Memory Lab module is completed in Part 2." /> },
     { label: 'Habits', content: <PlaceholderTab icon={Activity} title="Habit Tracker" message="Daily habit tracking integration is pending." /> },
     { label: 'Focus', content: <PlaceholderTab icon={Target} title="Focus Sessions" message="Recorded focus session metrics will appear here once the Focus Timer engine is implemented." /> }
   ];

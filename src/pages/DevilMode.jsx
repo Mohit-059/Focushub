@@ -177,7 +177,7 @@ export default function DevilMode() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', height: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
           <Flame size={28} color="var(--accent-pink)" />
-          <h1 style={{ margin: 0, fontSize: '1.8rem', letterSpacing: '1px' }}>Devil Mode</h1>
+          <h1 style={{ margin: 0, fontSize: '1.8rem', letterSpacing: '1px' }}>Motivation</h1>
         </div>
         
         <div style={{ flex: 1 }}>

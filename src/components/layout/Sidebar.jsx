@@ -16,7 +16,7 @@ const navItems = [
   { name: 'Math Gym', path: '/math-gym', icon: Calculator },
   // { name: 'Data Lab', path: '/data-lab', icon: Database },
   { name: 'Calendar', path: '/calendar', icon: Calendar },
-  { name: 'Gym', path: '/gym', icon: Dumbbell },
+  { name: 'Workout Tracker', path: '/gym', icon: Dumbbell },
   
   { name: 'Study', path: '/study', icon: BookOpen },
   { name: 'Code Arena', path: '/code-arena', icon: Code },
