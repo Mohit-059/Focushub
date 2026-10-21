@@ -1,21 +1,24 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
+import Auth from './pages/Auth';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import TongueTwisters from './components/study/TongueTwisters';
+
 // Styles
 import './styles/global.css';
 import './styles/layout.css';
 import './styles/components.css'; 
-import CalendarView from './pages/CalendarView';
-
-import StudyHub from './pages/StudyHub';
-
-import CodeArena from './pages/CodeArena';
 
 // Components & Layout
 import Sidebar from './components/layout/Sidebar';
 import Topbar from './components/layout/Topbar';
+import SOSButton from './components/shared/SOSButton';
+
+// Main Pages
 import Home from './pages/Home';
+import CalendarView from './pages/CalendarView';
+import StudyHub from './pages/StudyHub';
 import PlaceholderPage from './pages/PlaceholderPage';
 
 // Part 2 Pages
@@ -33,11 +36,43 @@ import Settings from './pages/Settings';
 
 export default function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: 'var(--bg-main)', color: 'var(--accent-blue)' }}>
+        Loading Workspace...
+      </div>
+    );
+  }
+
+  // If no active session, intercept the render and force the login screen
+  if (!session) {
+    return <Auth />;
+  }
 
   return (
     <AppProvider>
       <BrowserRouter>
         <div className="app-layout">
+          
+          {/* Global Emergency Button */}
+          <SOSButton />
+          
           <Sidebar isMobileOpen={isSidebarOpen} setMobileOpen={setSidebarOpen} />
           
           <main className="main-content">
@@ -62,8 +97,7 @@ export default function App() {
                 <Route path="/stats" element={<Stats />} />
                 <Route path="/daily-tasks" element={<DailyTasks />} />
                 <Route path="/settings" element={<Settings />} />
-                <Route path="/study" element={<StudyHub />} />
-
+                <Route path="/study-hub" element={<StudyHub />} />
                 <Route path="/calendar" element={<CalendarView />} />
                 
                 {/* Unbuilt / Future Feature */}
@@ -77,5 +111,5 @@ export default function App() {
         </div>
       </BrowserRouter>
     </AppProvider>
-  );
+  );  
 }

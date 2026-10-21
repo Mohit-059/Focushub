@@ -1,5 +1,7 @@
-import React, { useMemo } from 'react';
+import { supabase } from '../supabaseClient';
+import React, { useMemo, useState } from 'react';
 import { BookOpen, Brain, Calculator, Dumbbell, ShieldAlert } from 'lucide-react';
+
 
 // Import all the modular components
 import StatCard from '../components/shared/StatCard';
@@ -10,6 +12,26 @@ import ImageCarousel from '../components/home/ImageCarousel';
 import QuoteCard from '../components/home/QuoteCard';
 
 export default function Home() {
+
+  const [userName, setUserName] = useState('Builder');
+
+  // Fetch the logged-in user's name
+  React.useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user?.user_metadata?.display_name) {
+        // Use the name they typed at signup
+        setUserName(user.user_metadata.display_name);
+      } else if (user?.email) {
+        // Fallback to the username if they don't have a display name
+        const extracted = user.email.split('@')[0];
+        setUserName(extracted.charAt(0).toUpperCase() + extracted.slice(1));
+      }
+    };
+    fetchUser();
+  }, []);
+
   // Dynamic Greeting based on time
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -35,7 +57,7 @@ export default function Home() {
         
         <div style={{ position: 'relative', zIndex: 1 }}>
           <h1 style={{ fontSize: '2.5rem', fontWeight: 700, margin: '0 0 var(--space-xs) 0', letterSpacing: '-0.5px' }}>
-            {greeting}, <span style={{ color: 'var(--accent-blue)' }}>Mohit.</span>
+            {greeting}, <span style={{ color: 'var(--accent-blue)' }}>{userName}.</span>
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem', margin: 0 }}>
             Small steps today, big results tomorrow.
