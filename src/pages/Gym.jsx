@@ -622,6 +622,7 @@ function PowerliftingTab({ pState, updatePState }) {
 }
 
 // --- MAIN PARENT COMPONENT ---
+// --- MAIN PARENT COMPONENT ---
 export default function Gym() {
   const [gymData, setGymData] = useState(null);
 
@@ -630,14 +631,21 @@ export default function Gym() {
   }, []);
 
   const fetchGymData = async () => {
+    // FIXED: Added .limit(1).maybeSingle() to prevent the app from crashing if duplicate rows exist
     const { data, error } = await supabase
       .from('gym_state')
       .select('*')
-      .single();
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Database Fetch Error:", error);
+    }
 
     if (data) {
       setGymData(data);
     } else {
+      console.log("No data found for this user, building fresh template...");
       const defaultSchedule = [
         { id: 1, title: "Day 1 - Chest & Tris", exercises: [] },
         { id: 2, title: "Day 2 - Back & Bis", exercises: [] },
@@ -655,7 +663,7 @@ export default function Gym() {
         sessionMetadata: {}
       };
 
-      const { data: newData } = await supabase
+      const { data: newData, error: insertError } = await supabase
         .from('gym_state')
         .insert([{ 
           id: Math.floor(Math.random() * 10000000), 
@@ -665,18 +673,23 @@ export default function Gym() {
         .select()
         .single();
 
+      if (insertError) console.error("Database Insert Error:", insertError);
       if (newData) setGymData(newData);
     }
   };
 
   const updateWeeklySchedule = async (newSchedule) => {
     setGymData(prev => ({ ...prev, weekly_schedule: newSchedule }));
-    await supabase.from('gym_state').update({ weekly_schedule: newSchedule }).eq('id', gymData.id);
+    
+    const { error } = await supabase.from('gym_state').update({ weekly_schedule: newSchedule }).eq('id', gymData.id);
+    if (error) console.error("Failed to save schedule:", error);
   };
 
   const updatePowerliftingState = async (newState) => {
     setGymData(prev => ({ ...prev, powerlifting_data: newState }));
-    await supabase.from('gym_state').update({ powerlifting_data: newState }).eq('id', gymData.id);
+    
+    const { error } = await supabase.from('gym_state').update({ powerlifting_data: newState }).eq('id', gymData.id);
+    if (error) console.error("Failed to save powerlifting data:", error);
   };
 
   if (!gymData) {
