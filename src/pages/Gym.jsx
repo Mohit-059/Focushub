@@ -292,7 +292,7 @@
 // }
 
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Dumbbell, Plus, Trash2, CheckSquare, Square, XSquare, Edit2, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import Tabs from '../components/shared/Tabs';
 import { generateFullDUP } from '../utils/PowerliftingEngine';
@@ -303,26 +303,28 @@ function WeeklyScheduleTab({ schedule, updateSchedule }) {
   // Default to keeping the first day open
   const [expandedDayId, setExpandedDayId] = useState(1);
 
-  const updateDay = (dayId, updatedDay) => {
-    const newSchedule = schedule.map(d => d.id === dayId ? updatedDay : d);
-    updateSchedule(newSchedule);
-  };
+  // Always applied to the LATEST schedule inside the parent, never to a stale prop
+  const patchDay = (dayId, fn) =>
+    updateSchedule(prev => (prev || []).map(d => (d.id === dayId ? fn(d) : d)));
 
   const addExercise = (day) => {
     const newEx = { id: crypto.randomUUID(), name: '', sets: 3, reps: '10', weight: 0, completed: false, note: '' };
-    updateDay(day.id, { ...day, exercises: [...(day.exercises || []), newEx] });
+    patchDay(day.id, d => ({ ...d, exercises: [...(d.exercises || []), newEx] }));
   };
 
   const updateExercise = (day, exId, field, value) => {
-    const updatedExercises = day.exercises.map(ex => 
-      ex.id === exId ? { ...ex, [field]: value } : ex
-    );
-    updateDay(day.id, { ...day, exercises: updatedExercises });
+    patchDay(day.id, d => ({
+      ...d,
+      exercises: (d.exercises || []).map(ex => (ex.id === exId ? { ...ex, [field]: value } : ex))
+    }));
   };
 
   const deleteExercise = (day, exId) => {
-    updateDay(day.id, { ...day, exercises: day.exercises.filter(ex => ex.id !== exId) });
+    patchDay(day.id, d => ({ ...d, exercises: (d.exercises || []).filter(ex => ex.id !== exId) }));
   };
+
+  // used by the rename input
+  const renameDay = (day, title) => patchDay(day.id, d => ({ ...d, title }));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
@@ -355,7 +357,7 @@ function WeeklyScheduleTab({ schedule, updateSchedule }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)', flexWrap: 'wrap', gap: '10px' }}>
                   <input 
                     value={day.title}
-                    onChange={(e) => updateDay(day.id, { ...day, title: e.target.value })}
+                    onChange={(e) => renameDay(day, e.target.value)}
                     style={{ background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-main)', fontSize: '1.2rem', fontWeight: 'bold', outline: 'none', width: '100%', maxWidth: '250px', paddingBottom: '4px' }}
                     placeholder="Rename this day..."
                   />
@@ -425,11 +427,20 @@ function WeeklyScheduleTab({ schedule, updateSchedule }) {
 
 // --- POWERLIFTING TAB (MOBILE RESPONSIVE UPDATE) ---
 function PowerliftingTab({ pState, updatePState }) {
-  const { activeLift, benchBases, deadliftBases, sessionMetadata } = pState;
+  const { activeLift } = pState;
+  const benchBases = pState.benchBases || [100];
+  const deadliftBases = pState.deadliftBases || [140];
+  const sessionMetadata = pState.sessionMetadata || {};
   const currentBases = activeLift === 'Bench Press' ? benchBases : deadliftBases;
-  
-  const setCurrentBases = (newBases) => {
-    updatePState({ ...pState, [activeLift === 'Bench Press' ? 'benchBases' : 'deadliftBases']: newBases });
+
+  // Accepts either a new array or (prevArray => newArray). Touches ONLY the active lift's bases.
+  const setCurrentBases = (valueOrFn) => {
+    updatePState(p => {
+      const key = p.activeLift === 'Bench Press' ? 'benchBases' : 'deadliftBases';
+      const prev = p[key] || [];
+      const next = typeof valueOrFn === 'function' ? valueOrFn(prev) : valueOrFn;
+      return { ...p, [key]: next };
+    });
   };
 
   const sessions = useMemo(() => generateFullDUP(activeLift, currentBases), [activeLift, currentBases]);
@@ -437,36 +448,40 @@ function PowerliftingTab({ pState, updatePState }) {
   const [activeRemarkId, setActiveRemarkId] = useState(null);
   const [tempRemark, setTempRemark] = useState('');
 
+  // `updates` can be an object, or (currentMeta => object) when it depends on the current value
   const updateSessionMeta = (metaKey, updates) => {
-    const current = sessionMetadata[metaKey] || { completed: false, remark: '', setsStatus: [] };
-    updatePState({ ...pState, sessionMetadata: { ...sessionMetadata, [metaKey]: { ...current, ...updates } } });
+    updatePState(p => {
+      const sm = p.sessionMetadata || {};
+      const current = sm[metaKey] || { completed: false, remark: '', setsStatus: [] };
+      const patch = typeof updates === 'function' ? updates(current) : updates;
+      return { ...p, sessionMetadata: { ...sm, [metaKey]: { ...current, ...patch } } };
+    });
   };
 
   const toggleSetStatus = (metaKey, setIndex, totalSets) => {
-    const current = sessionMetadata[metaKey] || { completed: false, remark: '', setsStatus: [] };
-    const newSets = [...(current.setsStatus || Array(totalSets).fill(null))];
-    
-    if (newSets[setIndex] === null || newSets[setIndex] === undefined) newSets[setIndex] = true;
-    else if (newSets[setIndex] === true) newSets[setIndex] = false;
-    else newSets[setIndex] = null;
-    
-    updateSessionMeta(metaKey, { setsStatus: newSets });
+    updateSessionMeta(metaKey, (current) => {
+      const newSets = [...(current.setsStatus || [])];
+      while (newSets.length < totalSets) newSets.push(null);
+
+      if (newSets[setIndex] === null || newSets[setIndex] === undefined) newSets[setIndex] = true;
+      else if (newSets[setIndex] === true) newSets[setIndex] = false;
+      else newSets[setIndex] = null;
+
+      return { setsStatus: newSets };
+    });
   };
 
   const handleMarkDone = (metaKey, totalSets) => {
-    const current = sessionMetadata[metaKey] || { completed: false, remark: '', setsStatus: [] };
-    const currentSets = current.setsStatus || Array(totalSets).fill(null);
-    const hasAnyChecks = currentSets.some(s => s === true);
+    updateSessionMeta(metaKey, (current) => {
+      const currentSets = [...(current.setsStatus || [])];
+      while (currentSets.length < totalSets) currentSets.push(null);
+      const hasAnyChecks = currentSets.some(s => s === true);
 
-    const newSets = currentSets.map(status => {
-      if (hasAnyChecks) {
-        return status === null || status === undefined ? false : status;
-      } else {
-        return true;
-      }
+      const newSets = currentSets.map(status =>
+        hasAnyChecks ? (status === null || status === undefined ? false : status) : true
+      );
+      return { completed: true, setsStatus: newSets };
     });
-
-    updateSessionMeta(metaKey, { completed: true, setsStatus: newSets });
   };
 
   return (
@@ -476,7 +491,7 @@ function PowerliftingTab({ pState, updatePState }) {
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
         <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
           {['Bench Press', 'Deadlift'].map(lift => (
-            <button key={lift} className={`btn ${activeLift === lift ? 'btn-primary' : ''}`} onClick={() => updatePState({ ...pState, activeLift: lift })} style={{ flex: 1 }}>
+            <button key={lift} className={`btn ${activeLift === lift ? 'btn-primary' : ''}`} onClick={() => updatePState(p => ({ ...p, activeLift: lift }))} style={{ flex: 1 }}>
               {lift}
             </button>
           ))}
@@ -507,7 +522,7 @@ function PowerliftingTab({ pState, updatePState }) {
         {/* USING A FLUID MIN-WIDTH TO PREVENT OVERFLOW ON PHONES */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: 'var(--space-md)' }}>
           
-          {sessions.map((session, index) => { // <-- ADDED INDEX HERE
+          {sessions.map((session, index) => {
             const metaKey = `${activeLift}-S${session.globalSession}`;
             const meta = sessionMetadata[metaKey] || { completed: false, remark: '', setsStatus: [] };
             const totalSetsInSession = session.prescriptions.reduce((sum, p) => sum + parseInt(p.sets), 0);
@@ -625,23 +640,56 @@ function PowerliftingTab({ pState, updatePState }) {
 const SAVE_DEBOUNCE_MS = 600;
 const RETRY_DELAY_MS = 3000;
 
+const DEFAULT_SCHEDULE = [
+  { id: 1, title: 'Day 1 - Chest & Tris', exercises: [] },
+  { id: 2, title: 'Day 2 - Back & Bis', exercises: [] },
+  { id: 3, title: 'Day 3 - Legs', exercises: [] },
+  { id: 4, title: 'Day 4 - Rest', exercises: [] },
+  { id: 5, title: 'Day 5 - Upper', exercises: [] },
+  { id: 6, title: 'Day 6 - Lower', exercises: [] },
+  { id: 7, title: 'Day 7 - Weak Points', exercises: [] }
+];
+
+const DEFAULT_POWERLIFTING = {
+  activeLift: 'Bench Press',
+  benchBases: [100],
+  deadliftBases: [140],
+  sessionMetadata: {}
+};
+
+// Fill in anything missing so a half-empty DB row can never crash or wipe a lift
+const normalizeRow = (row) => ({
+  ...row,
+  weekly_schedule: Array.isArray(row.weekly_schedule) && row.weekly_schedule.length
+    ? row.weekly_schedule
+    : DEFAULT_SCHEDULE,
+  powerlifting_data: { ...DEFAULT_POWERLIFTING, ...(row.powerlifting_data || {}) }
+});
+
 export default function Gym() {
   const [gymData, setGymData] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
 
-  const rowIdRef = useRef(null);     // id of the single gym_state row we own
-  const pendingRef = useRef({});     // columns waiting to be written, e.g. { weekly_schedule: [...] }
-  const timerRef = useRef(null);     // debounce / retry timer
-  const savingRef = useRef(false);   // true while a write is in flight (writes are serialized)
-  const initRef = useRef(false);     // blocks the double effect run in React StrictMode (dupe rows)
+  const stateRef = useRef(null);     // ALWAYS the latest data (source of truth for updates)
+  const rowIdRef = useRef(null);
+  const pendingRef = useRef({});     // columns waiting to be written
+  const timerRef = useRef(null);
+  const savingRef = useRef(false);   // writes are serialized
+  const initRef = useRef(false);     // blocks StrictMode double-run (duplicate rows)
   const mountedRef = useRef(true);
+
+  const adoptRow = useCallback((row) => {
+    const clean = normalizeRow(row);
+    rowIdRef.current = clean.id;
+    stateRef.current = clean;
+    if (mountedRef.current) setGymData(clean);
+  }, []);
 
   // ---------- LOAD ----------
   const fetchGymData = useCallback(async () => {
     setLoadError(null);
 
-    // Deterministic order: without it, limit(1) can return a different row on each load
     const { data, error } = await supabase
       .from('gym_state')
       .select('*')
@@ -649,8 +697,7 @@ export default function Gym() {
       .limit(1)
       .maybeSingle();
 
-    // IMPORTANT: on a fetch error we must NOT fall through and create a new row,
-    // that was silently creating duplicate rows and "resetting" your data.
+    // A failed fetch must never fall through to creating a new row
     if (error) {
       console.error('Database Fetch Error:', error);
       if (mountedRef.current) setLoadError(error.message || 'Could not load gym data.');
@@ -658,35 +705,24 @@ export default function Gym() {
     }
 
     if (data) {
-      rowIdRef.current = data.id;
-      if (mountedRef.current) setGymData(data);
+      adoptRow(data);
+      // If we had to fill in missing keys, persist the repaired version once
+      const fixed = normalizeRow(data);
+      if (JSON.stringify(fixed.powerlifting_data) !== JSON.stringify(data.powerlifting_data) ||
+          JSON.stringify(fixed.weekly_schedule) !== JSON.stringify(data.weekly_schedule)) {
+        pendingRef.current = { weekly_schedule: fixed.weekly_schedule, powerlifting_data: fixed.powerlifting_data };
+        flushSavesRef.current();
+      }
       return;
     }
 
     console.log('No data found for this user, building fresh template...');
-    const defaultSchedule = [
-      { id: 1, title: 'Day 1 - Chest & Tris', exercises: [] },
-      { id: 2, title: 'Day 2 - Back & Bis', exercises: [] },
-      { id: 3, title: 'Day 3 - Legs', exercises: [] },
-      { id: 4, title: 'Day 4 - Rest', exercises: [] },
-      { id: 5, title: 'Day 5 - Upper', exercises: [] },
-      { id: 6, title: 'Day 6 - Lower', exercises: [] },
-      { id: 7, title: 'Day 7 - Weak Points', exercises: [] }
-    ];
-
-    const defaultPowerlifting = {
-      activeLift: 'Bench Press',
-      benchBases: [100],
-      deadliftBases: [140],
-      sessionMetadata: {}
-    };
-
     const { data: newData, error: insertError } = await supabase
       .from('gym_state')
       .insert([{
         id: Math.floor(Math.random() * 10000000),
-        weekly_schedule: defaultSchedule,
-        powerlifting_data: defaultPowerlifting
+        weekly_schedule: DEFAULT_SCHEDULE,
+        powerlifting_data: DEFAULT_POWERLIFTING
       }])
       .select()
       .single();
@@ -696,24 +732,15 @@ export default function Gym() {
       if (mountedRef.current) setLoadError(insertError.message || 'Could not create gym data.');
       return;
     }
+    adoptRow(newData);
+  }, [adoptRow]);
 
-    rowIdRef.current = newData.id;
-    if (mountedRef.current) setGymData(newData);
-  }, []);
+  // ---------- SAVE (debounced, serialized, per column, auto-retry) ----------
+  const flushSavesRef = useRef(() => {});
 
-  useEffect(() => {
-    mountedRef.current = true;
-    if (!initRef.current) {
-      initRef.current = true;
-      fetchGymData();
-    }
-    return () => { mountedRef.current = false; };
-  }, [fetchGymData]);
-
-  // ---------- SAVE (debounced + serialized + per-column) ----------
   const flushSaves = useCallback(async () => {
     clearTimeout(timerRef.current);
-    if (savingRef.current) return;                       // the running loop will pick up new changes
+    if (savingRef.current) return;                      // running loop will pick up new changes
     if (rowIdRef.current === null) return;
     if (Object.keys(pendingRef.current).length === 0) return;
 
@@ -721,7 +748,6 @@ export default function Gym() {
     if (mountedRef.current) setSaveStatus('saving');
 
     try {
-      // Keep writing until nothing new has been queued while we were awaiting
       while (Object.keys(pendingRef.current).length > 0) {
         const batch = pendingRef.current;
         pendingRef.current = {};
@@ -732,8 +758,7 @@ export default function Gym() {
           .eq('id', rowIdRef.current);
 
         if (error) {
-          // Put the batch back, but never overwrite anything newer the user typed meanwhile
-          pendingRef.current = { ...batch, ...pendingRef.current };
+          pendingRef.current = { ...batch, ...pendingRef.current }; // keep, never overwrite newer
           throw error;
         }
       }
@@ -741,19 +766,43 @@ export default function Gym() {
     } catch (err) {
       console.error('Failed to save gym data:', err);
       if (mountedRef.current) setSaveStatus('error');
-      timerRef.current = setTimeout(flushSaves, RETRY_DELAY_MS); // auto-retry
+      timerRef.current = setTimeout(() => flushSavesRef.current(), RETRY_DELAY_MS);
     } finally {
       savingRef.current = false;
     }
   }, []);
+  flushSavesRef.current = flushSaves;
 
-  const queueSave = useCallback((column, value) => {
-    pendingRef.current = { ...pendingRef.current, [column]: value };
+  // ---------- THE CORE FIX: apply updates to the LATEST data ----------
+  // `updater` is either a new value or (prevValue => newValue).
+  const applyUpdate = useCallback((column, updater) => {
+    const latest = stateRef.current;
+    if (!latest) return;
+
+    const nextValue = typeof updater === 'function' ? updater(latest[column]) : updater;
+    const next = { ...latest, [column]: nextValue };
+    stateRef.current = next;          // synchronous, so two quick taps never see old data
+    setGymData(next);                 // instant UI
+
+    pendingRef.current = { ...pendingRef.current, [column]: nextValue };
     clearTimeout(timerRef.current);
     timerRef.current = setTimeout(flushSaves, SAVE_DEBOUNCE_MS);
   }, [flushSaves]);
 
-  // Don't lose pending edits when the tab is hidden/closed or the page unmounts
+  const updateWeeklySchedule = useCallback((updater) => applyUpdate('weekly_schedule', updater), [applyUpdate]);
+  const updatePowerliftingState = useCallback((updater) => applyUpdate('powerlifting_data', updater), [applyUpdate]);
+
+  // ---------- LIFECYCLE ----------
+  useEffect(() => {
+    mountedRef.current = true;
+    if (!initRef.current) {
+      initRef.current = true;
+      fetchGymData();
+    }
+    return () => { mountedRef.current = false; };
+  }, [fetchGymData]);
+
+  // Flush pending edits when the tab is hidden / page closes / component unmounts
   useEffect(() => {
     const onHide = () => { if (document.visibilityState === 'hidden') flushSaves(); };
     const onPageHide = () => flushSaves();
@@ -765,17 +814,6 @@ export default function Gym() {
       flushSaves();
     };
   }, [flushSaves]);
-
-  // ---------- UPDATERS PASSED TO TABS ----------
-  const updateWeeklySchedule = useCallback((newSchedule) => {
-    setGymData(prev => ({ ...prev, weekly_schedule: newSchedule })); // instant UI
-    queueSave('weekly_schedule', newSchedule);                       // DB write is batched
-  }, [queueSave]);
-
-  const updatePowerliftingState = useCallback((newState) => {
-    setGymData(prev => ({ ...prev, powerlifting_data: newState }));
-    queueSave('powerlifting_data', newState);
-  }, [queueSave]);
 
   // ---------- RENDER ----------
   if (loadError) {
