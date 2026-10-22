@@ -622,75 +622,170 @@ function PowerliftingTab({ pState, updatePState }) {
 }
 
 // --- MAIN PARENT COMPONENT ---
-// --- MAIN PARENT COMPONENT ---
+const SAVE_DEBOUNCE_MS = 600;
+const RETRY_DELAY_MS = 3000;
+
 export default function Gym() {
   const [gymData, setGymData] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
 
-  useEffect(() => {
-    fetchGymData();
-  }, []);
+  const rowIdRef = useRef(null);     // id of the single gym_state row we own
+  const pendingRef = useRef({});     // columns waiting to be written, e.g. { weekly_schedule: [...] }
+  const timerRef = useRef(null);     // debounce / retry timer
+  const savingRef = useRef(false);   // true while a write is in flight (writes are serialized)
+  const initRef = useRef(false);     // blocks the double effect run in React StrictMode (dupe rows)
+  const mountedRef = useRef(true);
 
-  const fetchGymData = async () => {
-    // FIXED: Added .limit(1).maybeSingle() to prevent the app from crashing if duplicate rows exist
+  // ---------- LOAD ----------
+  const fetchGymData = useCallback(async () => {
+    setLoadError(null);
+
+    // Deterministic order: without it, limit(1) can return a different row on each load
     const { data, error } = await supabase
       .from('gym_state')
       .select('*')
+      .order('id', { ascending: true })
       .limit(1)
       .maybeSingle();
 
+    // IMPORTANT: on a fetch error we must NOT fall through and create a new row,
+    // that was silently creating duplicate rows and "resetting" your data.
     if (error) {
-      console.error("Database Fetch Error:", error);
+      console.error('Database Fetch Error:', error);
+      if (mountedRef.current) setLoadError(error.message || 'Could not load gym data.');
+      return;
     }
 
     if (data) {
-      setGymData(data);
-    } else {
-      console.log("No data found for this user, building fresh template...");
-      const defaultSchedule = [
-        { id: 1, title: "Day 1 - Chest & Tris", exercises: [] },
-        { id: 2, title: "Day 2 - Back & Bis", exercises: [] },
-        { id: 3, title: "Day 3 - Legs", exercises: [] },
-        { id: 4, title: "Day 4 - Rest", exercises: [] },
-        { id: 5, title: "Day 5 - Upper", exercises: [] },
-        { id: 6, title: "Day 6 - Lower", exercises: [] },
-        { id: 7, title: "Day 7 - Weak Points", exercises: [] }
-      ];
-      
-      const defaultPowerlifting = {
-        activeLift: "Bench Press", 
-        benchBases: [100], 
-        deadliftBases: [140], 
-        sessionMetadata: {}
-      };
-
-      const { data: newData, error: insertError } = await supabase
-        .from('gym_state')
-        .insert([{ 
-          id: Math.floor(Math.random() * 10000000), 
-          weekly_schedule: defaultSchedule, 
-          powerlifting_data: defaultPowerlifting 
-        }])
-        .select()
-        .single();
-
-      if (insertError) console.error("Database Insert Error:", insertError);
-      if (newData) setGymData(newData);
+      rowIdRef.current = data.id;
+      if (mountedRef.current) setGymData(data);
+      return;
     }
-  };
 
-  const updateWeeklySchedule = async (newSchedule) => {
-    setGymData(prev => ({ ...prev, weekly_schedule: newSchedule }));
-    
-    const { error } = await supabase.from('gym_state').update({ weekly_schedule: newSchedule }).eq('id', gymData.id);
-    if (error) console.error("Failed to save schedule:", error);
-  };
+    console.log('No data found for this user, building fresh template...');
+    const defaultSchedule = [
+      { id: 1, title: 'Day 1 - Chest & Tris', exercises: [] },
+      { id: 2, title: 'Day 2 - Back & Bis', exercises: [] },
+      { id: 3, title: 'Day 3 - Legs', exercises: [] },
+      { id: 4, title: 'Day 4 - Rest', exercises: [] },
+      { id: 5, title: 'Day 5 - Upper', exercises: [] },
+      { id: 6, title: 'Day 6 - Lower', exercises: [] },
+      { id: 7, title: 'Day 7 - Weak Points', exercises: [] }
+    ];
 
-  const updatePowerliftingState = async (newState) => {
+    const defaultPowerlifting = {
+      activeLift: 'Bench Press',
+      benchBases: [100],
+      deadliftBases: [140],
+      sessionMetadata: {}
+    };
+
+    const { data: newData, error: insertError } = await supabase
+      .from('gym_state')
+      .insert([{
+        id: Math.floor(Math.random() * 10000000),
+        weekly_schedule: defaultSchedule,
+        powerlifting_data: defaultPowerlifting
+      }])
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('Database Insert Error:', insertError);
+      if (mountedRef.current) setLoadError(insertError.message || 'Could not create gym data.');
+      return;
+    }
+
+    rowIdRef.current = newData.id;
+    if (mountedRef.current) setGymData(newData);
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    if (!initRef.current) {
+      initRef.current = true;
+      fetchGymData();
+    }
+    return () => { mountedRef.current = false; };
+  }, [fetchGymData]);
+
+  // ---------- SAVE (debounced + serialized + per-column) ----------
+  const flushSaves = useCallback(async () => {
+    clearTimeout(timerRef.current);
+    if (savingRef.current) return;                       // the running loop will pick up new changes
+    if (rowIdRef.current === null) return;
+    if (Object.keys(pendingRef.current).length === 0) return;
+
+    savingRef.current = true;
+    if (mountedRef.current) setSaveStatus('saving');
+
+    try {
+      // Keep writing until nothing new has been queued while we were awaiting
+      while (Object.keys(pendingRef.current).length > 0) {
+        const batch = pendingRef.current;
+        pendingRef.current = {};
+
+        const { error } = await supabase
+          .from('gym_state')
+          .update(batch)
+          .eq('id', rowIdRef.current);
+
+        if (error) {
+          // Put the batch back, but never overwrite anything newer the user typed meanwhile
+          pendingRef.current = { ...batch, ...pendingRef.current };
+          throw error;
+        }
+      }
+      if (mountedRef.current) setSaveStatus('saved');
+    } catch (err) {
+      console.error('Failed to save gym data:', err);
+      if (mountedRef.current) setSaveStatus('error');
+      timerRef.current = setTimeout(flushSaves, RETRY_DELAY_MS); // auto-retry
+    } finally {
+      savingRef.current = false;
+    }
+  }, []);
+
+  const queueSave = useCallback((column, value) => {
+    pendingRef.current = { ...pendingRef.current, [column]: value };
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(flushSaves, SAVE_DEBOUNCE_MS);
+  }, [flushSaves]);
+
+  // Don't lose pending edits when the tab is hidden/closed or the page unmounts
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === 'hidden') flushSaves(); };
+    const onPageHide = () => flushSaves();
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onPageHide);
+      flushSaves();
+    };
+  }, [flushSaves]);
+
+  // ---------- UPDATERS PASSED TO TABS ----------
+  const updateWeeklySchedule = useCallback((newSchedule) => {
+    setGymData(prev => ({ ...prev, weekly_schedule: newSchedule })); // instant UI
+    queueSave('weekly_schedule', newSchedule);                       // DB write is batched
+  }, [queueSave]);
+
+  const updatePowerliftingState = useCallback((newState) => {
     setGymData(prev => ({ ...prev, powerlifting_data: newState }));
-    
-    const { error } = await supabase.from('gym_state').update({ powerlifting_data: newState }).eq('id', gymData.id);
-    if (error) console.error("Failed to save powerlifting data:", error);
-  };
+    queueSave('powerlifting_data', newState);
+  }, [queueSave]);
+
+  // ---------- RENDER ----------
+  if (loadError) {
+    return (
+      <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl)', display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', alignItems: 'center' }}>
+        <div>Couldn't load your gym data: {loadError}</div>
+        <button className="btn btn-primary" onClick={fetchGymData}>Try again</button>
+      </div>
+    );
+  }
 
   if (!gymData) {
     return <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: 'var(--space-xl)' }}>Loading Secure Gym Data...</div>;
@@ -701,13 +796,19 @@ export default function Gym() {
     { label: 'Powerlifting (DUP)', content: <PowerliftingTab pState={gymData.powerlifting_data} updatePState={updatePowerliftingState} /> }
   ];
 
+  const statusLabel = { saving: 'Saving…', saved: 'Saved', error: 'Save failed, retrying…' }[saveStatus];
+  const statusColor = saveStatus === 'error' ? 'var(--accent-pink)' : saveStatus === 'saved' ? 'var(--accent-emerald)' : 'var(--text-muted)';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
         <Dumbbell size={28} color="var(--accent-pink)" />
         <h1 style={{ margin: 0, fontSize: '1.8rem' }}>Gym Command</h1>
+        {statusLabel && (
+          <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: statusColor }}>{statusLabel}</span>
+        )}
       </div>
-      
+
       <div style={{ flex: 1 }}>
         <Tabs tabs={tabs} defaultTab={0} />
       </div>
