@@ -16,10 +16,12 @@ const navItems = [
   { name: 'Math Gym', path: '/math-gym', icon: Calculator },
   // { name: 'Data Lab', path: '/data-lab', icon: Database },
   { name: 'Calendar', path: '/calendar', icon: Calendar },
-  { name: 'Workout Tracker', path: '/gym', icon: Dumbbell },
+  { name: 'Gym Logs', path: '/gym', icon: Dumbbell },
+
+  { name: 'Daily Logs', path: '/code-arena', icon: Code },
   
   { name: 'Study', path: '/study', icon: BookOpen },
-  { name: 'Code Arena', path: '/code-arena', icon: Code },
+  
   { name: 'Stats', path: '/stats', icon: BarChart2 },
   { name: 'Notes', path: '/notes', icon: FileText },
   { name: 'Settings', path: '/settings', icon: Settings },

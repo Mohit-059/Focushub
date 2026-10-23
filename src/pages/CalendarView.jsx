@@ -1,10 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X, AlignLeft, Trash2 } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export default function CalendarView() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [events, setEvents] = useState([]);
+  
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskNote, setNewTaskNote] = useState('');
+  
+  const dayViewRef = useRef(null);
 
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -13,11 +19,10 @@ export default function CalendarView() {
   }, [currentDate]);
 
   const fetchMonthEvents = async () => {
-    // Fetch any task/deadline that has a date set
     const { data } = await supabase
       .from('tasks')
       .select('*')
-      .not('deadline', 'is', null);
+      .eq('task_type', 'calendar');
       
     if (data) setEvents(data);
   };
@@ -31,22 +36,68 @@ export default function CalendarView() {
   const daysInMonth = getDaysInMonth(year, month);
   const firstDay = getFirstDayOfMonth(year, month);
 
-  // Generate the responsive grid structure
   const gridCells = [];
   for (let i = 0; i < firstDay; i++) gridCells.push(null);
   for (let i = 1; i <= daysInMonth; i++) gridCells.push(i);
   
-  // Pad the end of the grid to complete the last row
   const paddingEnd = (7 - (gridCells.length % 7)) % 7;
   for (let i = 0; i < paddingEnd; i++) gridCells.push(null);
 
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const prevMonth = () => {
+    setCurrentDate(new Date(year, month - 1, 1));
+    setSelectedDate(null);
+  };
+  
+  const nextMonth = () => {
+    setCurrentDate(new Date(year, month + 1, 1));
+    setSelectedDate(null);
+  };
+
+  const handleDayClick = (day) => {
+    if (!day) return;
+    const clickedDate = new Date(Date.UTC(year, month, day)).toISOString().split('T')[0];
+    setSelectedDate(clickedDate);
+    
+    setTimeout(() => {
+      dayViewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  };
+
+  const handleAddTask = async (e) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim() || !selectedDate) return;
+
+    const { data, error } = await supabase
+      .from('tasks')
+      .insert([{ 
+        title: newTaskTitle.trim(), 
+        note: newTaskNote.trim(),
+        deadline: selectedDate,
+        task_type: 'calendar'
+      }])
+      .select();
+
+    if (data) {
+      setEvents([...events, data[0]]);
+      setNewTaskTitle('');
+      setNewTaskNote('');
+    } else if (error) {
+      console.error("Error adding calendar event:", error);
+    }
+  };
+
+  const deleteTask = async (id) => {
+    await supabase.from('tasks').delete().eq('id', id);
+    setEvents(events.filter(ev => ev.id !== id));
+  };
+
+  const selectedDayEvents = selectedDate ? events.filter(e => {
+    return e.deadline && e.deadline.startsWith(selectedDate);
+  }) : [];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', height: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', minHeight: '100%', paddingBottom: '100px' }}>
       
-      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
           <CalendarIcon size={28} color="var(--accent-blue)" />
@@ -60,72 +111,142 @@ export default function CalendarView() {
         </div>
       </div>
 
-      {/* Responsive Grid Layout */}
-      <div className="card" style={{ flex: 1, padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        
-        {/* Days Header */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid rgba(255,255,255,0.05)', backgroundColor: 'var(--bg-panel-hover)' }}>
-          {daysOfWeek.map(day => (
-            <div key={day} style={{ padding: 'var(--space-sm)', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              {/* Truncate to 1 letter on ultra-small screens automatically via CSS if needed, but 3 letters usually fits */}
-              {day}
-            </div>
-          ))}
-        </div>
-        
-        {/* Calendar Body */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: 'minmax(100px, 1fr)', flex: 1, overflowY: 'auto' }}>
-          {gridCells.map((date, index) => {
-            // Find events that match this exact date block
-            const dayEvents = date ? events.filter(e => {
-              const eventDate = new Date(e.deadline);
-              // Account for timezone offsets to ensure the day matches exactly
-              return eventDate.getUTCFullYear() === year && 
-                     eventDate.getUTCMonth() === month && 
-                     eventDate.getUTCDate() === date;
-            }) : [];
-
-            return (
-              <div key={index} style={{ 
-                borderRight: '1px solid rgba(255,255,255,0.05)', 
-                borderBottom: '1px solid rgba(255,255,255,0.05)', 
-                padding: 'var(--space-sm)',
-                backgroundColor: date ? 'transparent' : 'rgba(0,0,0,0.2)',
-                minHeight: '100px',
-                display: 'flex',
-                flexDirection: 'column'
-              }}>
-                {date && (
-                  <>
-                    <div style={{ fontSize: '0.9rem', marginBottom: 'var(--space-xs)', color: 'var(--text-main)', fontWeight: 'bold' }}>
-                      {date}
-                    </div>
-                    
-                    {/* Database-synced Event Pills */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', overflowY: 'auto', flex: 1 }}>
-                      {dayEvents.map(ev => (
-                        <div key={ev.id} style={{ 
-                          backgroundColor: ev.is_completed ? 'var(--bg-panel-hover)' : 'var(--accent-blue)', 
-                          color: ev.is_completed ? 'var(--text-muted)' : '#fff', 
-                          fontSize: '0.75rem', 
-                          padding: '4px 6px', 
-                          borderRadius: '4px', 
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          textDecoration: ev.is_completed ? 'line-through' : 'none'
-                        }}>
-                          {ev.title}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        {/* THE FIX: Width 100% and NO scrolling. Strict grid containment. */}
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
+          
+          {/* minmax(0, 1fr) ensures columns can shrink aggressively on mobile without breaking */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: '1px solid rgba(255,255,255,0.05)', backgroundColor: 'var(--bg-panel-hover)' }}>
+            {daysOfWeek.map(day => (
+              <div key={day} style={{ padding: 'var(--space-sm) 2px', textAlign: 'center', fontWeight: 600, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                {day.charAt(0)}
               </div>
-            );
-          })}
+            ))}
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gridAutoRows: 'minmax(70px, 1fr)' }}>
+            {gridCells.map((date, index) => {
+              const dayEvents = date ? events.filter(e => {
+                const eventDate = new Date(e.deadline);
+                return eventDate.getUTCFullYear() === year && 
+                       eventDate.getUTCMonth() === month && 
+                       eventDate.getUTCDate() === date;
+              }) : [];
+              
+              const isSelected = date && selectedDate === new Date(Date.UTC(year, month, date)).toISOString().split('T')[0];
+
+              return (
+                <div 
+                  key={index} 
+                  onClick={() => handleDayClick(date)}
+                  style={{ 
+                    borderRight: '1px solid rgba(255,255,255,0.05)', 
+                    borderBottom: '1px solid rgba(255,255,255,0.05)', 
+                    padding: '4px 2px',
+                    backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.1)' : (date ? 'transparent' : 'rgba(0,0,0,0.2)'),
+                    display: 'flex',
+                    flexDirection: 'column',
+                    cursor: date ? 'pointer' : 'default',
+                    transition: 'background-color 0.2s ease',
+                    border: isSelected ? '1px solid var(--accent-blue)' : 'none',
+                    overflow: 'hidden' // Absolutely prevents cell stretching
+                  }}
+                >
+                  {date && (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '2px' }}>
+                        <span style={{ fontSize: '0.85rem', color: isSelected ? 'var(--accent-blue)' : 'var(--text-main)', fontWeight: isSelected ? 'bold' : 'normal' }}>
+                          {date}
+                        </span>
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflowY: 'hidden', flex: 1 }}>
+                        {dayEvents.map(ev => (
+                          <div key={ev.id} style={{ 
+                            backgroundColor: 'var(--accent-blue)', 
+                            color: '#fff', 
+                            fontSize: '0.65rem', // Scaled down for mobile fit
+                            padding: '1px 4px', 
+                            borderRadius: '3px', 
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>
+                            {ev.title}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
         </div>
       </div>
+
+      {selectedDate && (
+        <div ref={dayViewRef} className="card" style={{ borderTop: '3px solid var(--accent-blue)', marginTop: 'var(--space-md)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)' }}>
+            <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text-main)' }}>
+              Agenda for {new Date(selectedDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+            </h3>
+            <button className="btn-icon" onClick={() => setSelectedDate(null)}><X size={20} /></button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', marginBottom: 'var(--space-lg)' }}>
+            {selectedDayEvents.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontStyle: 'italic' }}>No events scheduled for this day.</div>
+            ) : (
+              selectedDayEvents.map(ev => (
+                <div key={ev.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: 'var(--space-md)', backgroundColor: 'var(--bg-panel-hover)', borderRadius: 'var(--radius-sm)' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-main)', wordWrap: 'break-word' }}>
+                      {ev.title}
+                    </div>
+                    {ev.note && (
+                      <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', marginTop: '6px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                        <AlignLeft size={16} style={{ marginTop: '2px', flexShrink: 0 }} />
+                        <span style={{ lineHeight: '1.4', wordWrap: 'break-word', flex: 1 }}>{ev.note}</span>
+                      </div>
+                    )}
+                  </div>
+                  <button className="btn-icon" onClick={() => deleteTask(ev.id)} style={{ padding: '4px', marginLeft: '10px' }}>
+                    <Trash2 size={18} color="var(--accent-pink)" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div style={{ paddingTop: 'var(--space-md)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            <h4 style={{ margin: '0 0 var(--space-sm) 0', fontSize: '1rem' }}>Add Calendar Event</h4>
+            <form onSubmit={handleAddTask} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+              
+              <input 
+                className="input" 
+                placeholder="Event name..." 
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+              />
+
+              <textarea 
+                className="input" 
+                placeholder="Description or notes..." 
+                value={newTaskNote}
+                onChange={(e) => setNewTaskNote(e.target.value)}
+                style={{ resize: 'vertical', minHeight: '80px', fontFamily: 'inherit' }}
+              />
+
+              <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start', padding: '10px 20px' }}>
+                <Plus size={18} /> Save Event
+              </button>
+            </form>
+          </div>
+
+        </div>
+      )}
     </div>
   );
 }

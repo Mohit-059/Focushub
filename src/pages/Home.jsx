@@ -13,7 +13,7 @@ import QuoteCard from '../components/home/QuoteCard';
 
 export default function Home() {
 
-  const [userName, setUserName] = useState('Builder');
+  const [userName, setUserName] = useState('Name');
 
   // Fetch the logged-in user's name
   React.useEffect(() => {
@@ -108,7 +108,7 @@ export default function Home() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', gridColumn: 'span 12' }} className="col-lg-4">
           
           {/* D. Daily Tasks Card */}
-          <div style={{ height: '400px' }}>
+          <div style={{ height: '300px' }}>
             <DailyTasksCard />
           </div>
 

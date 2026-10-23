@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { CheckSquare, Plus, Trash2, CheckCircle2, Circle } from 'lucide-react';
+import { CheckCircle2, Circle, ArrowRight, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../supabaseClient';
 
-export default function DailyTasks() {
+export default function DailyTasksCard() {
   const [tasks, setTasks] = useState([]);
-  const [newTaskText, setNewTaskText] = useState('');
-  const [newPriority, setNewPriority] = useState('Normal');
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchTasks();
@@ -16,45 +16,21 @@ export default function DailyTasks() {
       .from('tasks')
       .select('*')
       .eq('task_type', 'task')
-      .order('is_completed', { ascending: true })
-      .order('created_at', { ascending: false });
+      .eq('is_completed', false)
+      .order('created_at', { ascending: false })
+      .limit(5);
+      
     if (data) setTasks(data);
   };
 
-  const handleAddTask = async (e) => {
-    e.preventDefault();
-    if (!newTaskText.trim()) return;
-
-    const { data } = await supabase
-      .from('tasks')
-      .insert([{ 
-        title: newTaskText.trim(), 
-        priority: newPriority,
-        task_type: 'task'
-      }])
-      .select();
-
-    if (data) {
-      setTasks(prev => [data[0], ...prev].sort((a, b) => a.is_completed - b.is_completed));
-      setNewTaskText('');
-    }
-  };
-
   const toggleTask = async (id, currentStatus) => {
-    const { data } = await supabase
-      .from('tasks')
-      .update({ is_completed: !currentStatus })
-      .eq('id', id)
-      .select();
-
-    if (data) {
-      setTasks(prev => prev.map(t => t.id === id ? data[0] : t).sort((a, b) => a.is_completed - b.is_completed));
-    }
+    await supabase.from('tasks').update({ is_completed: !currentStatus }).eq('id', id);
+    setTasks(tasks.filter(t => t.id !== id));
   };
 
   const deleteTask = async (id) => {
     await supabase.from('tasks').delete().eq('id', id);
-    setTasks(prev => prev.filter(task => task.id !== id));
+    setTasks(tasks.filter(t => t.id !== id));
   };
 
   const priorityColors = {
@@ -64,62 +40,40 @@ export default function DailyTasks() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', height: '100%', maxWidth: '800px', margin: '0 auto', width: '100%' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
-        <CheckSquare size={28} color="var(--accent-emerald)" />
-        <h1 style={{ margin: 0, fontSize: '1.8rem' }}>Master Task List</h1>
+    <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)' }}>
+        <h3 className="card-title" style={{ margin: 0 }}>Master Tasks</h3>
+        <button className="btn-icon" onClick={() => navigate('/tasks')} title="View All">
+          <ArrowRight size={18} />
+        </button>
       </div>
 
-      <div className="card">
-        <form onSubmit={handleAddTask} style={{ display: 'flex', gap: 'var(--space-md)', flexWrap: 'wrap' }}>
-          <input 
-            type="text" 
-            className="input" 
-            placeholder="What needs to be done?" 
-            value={newTaskText}
-            onChange={(e) => setNewTaskText(e.target.value)}
-            style={{ flex: '1 1 200px' }}
-          />
-          <select className="input" value={newPriority} onChange={(e) => setNewPriority(e.target.value)} style={{ width: 'auto' }}>
-            <option value="Low">Low Priority</option>
-            <option value="Normal">Normal Priority</option>
-            <option value="High">High Priority</option>
-          </select>
-          <button type="submit" className="btn btn-primary" style={{ flex: '1 1 120px', display: 'flex', justifyContent: 'center' }}>
-            <Plus size={18} /> Add Task
-          </button>
-        </form>
-      </div>
-
-      <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)', overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1, overflowY: 'auto', paddingRight: '5px' }}>
         {tasks.length === 0 ? (
-          <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 'var(--space-xl) 0' }}>
-            Your task list is completely empty. Enjoy the peace!
+          <div style={{ color: 'var(--text-muted)', textAlign: 'center', margin: 'auto 0' }}>
+            All caught up!
           </div>
         ) : (
           tasks.map(task => (
             <div key={task.id} style={{ 
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', 
-              padding: 'var(--space-md)', backgroundColor: 'var(--bg-panel-hover)', 
-              borderRadius: 'var(--radius-sm)', opacity: task.is_completed ? 0.6 : 1
+              display: 'flex', alignItems: 'center', gap: '12px', 
+              padding: '10px 12px', backgroundColor: 'var(--bg-panel-hover)', 
+              borderRadius: 'var(--radius-sm)',
+              borderLeft: `3px solid ${priorityColors[task.priority || 'Normal']}`
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', cursor: 'pointer', flex: 1 }} onClick={() => toggleTask(task.id, task.is_completed)}>
-                {task.is_completed ? <CheckCircle2 size={22} color="var(--accent-emerald)" /> : <Circle size={22} color="var(--text-muted)" />}
-                <div>
-                  <div style={{ 
-                    color: task.is_completed ? 'var(--text-muted)' : 'var(--text-main)', 
-                    textDecoration: task.is_completed ? 'line-through' : 'none',
-                    fontSize: '1.05rem', fontWeight: 500
-                  }}>
-                    {task.title}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: priorityColors[task.priority || 'Normal'], marginTop: '2px' }}>
-                    {task.priority || 'Normal'} Priority
-                  </div>
-                </div>
+              <div 
+                onClick={() => toggleTask(task.id, task.is_completed)} 
+                style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              >
+                {task.is_completed ? <CheckCircle2 size={20} color="var(--accent-emerald)" /> : <Circle size={20} color="var(--text-muted)" />}
               </div>
-              <button className="btn-icon" onClick={() => deleteTask(task.id)}>
-                <Trash2 size={18} />
+              
+              <div style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ color: 'var(--text-main)', fontSize: '0.95rem' }}>{task.title}</div>
+              </div>
+
+              <button className="btn-icon" onClick={() => deleteTask(task.id)} style={{ padding: '4px' }}>
+                <Trash2 size={16} color="var(--text-muted)" />
               </button>
             </div>
           ))

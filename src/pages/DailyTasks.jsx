@@ -1,33 +1,60 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CheckSquare, Plus, Trash2, CheckCircle2, Circle } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
+import { supabase } from '../supabaseClient';
 
 export default function DailyTasks() {
-  const { tasks, setTasks } = useAppContext();
+  const [tasks, setTasks] = useState([]);
   const [newTaskText, setNewTaskText] = useState('');
   const [newPriority, setNewPriority] = useState('Normal');
 
-  const handleAddTask = (e) => {
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const fetchTasks = async () => {
+    const { data } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('task_type', 'task')
+      .order('created_at', { ascending: false });
+      
+    if (data) setTasks(data);
+  };
+
+  const handleAddTask = async (e) => {
     e.preventDefault();
     if (!newTaskText.trim()) return;
-    const newTask = {
-      id: crypto.randomUUID(),
-      text: newTaskText.trim(),
-      completed: false,
-      priority: newPriority,
-      createdAt: new Date().toISOString()
-    };
-    setTasks([...tasks, newTask]);
-    setNewTaskText('');
+
+    const { data } = await supabase
+      .from('tasks')
+      .insert([{ 
+        title: newTaskText.trim(),
+        priority: newPriority,
+        task_type: 'task',
+        is_completed: false
+      }])
+      .select();
+
+    if (data) {
+      setTasks([data[0], ...tasks]);
+      setNewTaskText('');
+    }
   };
 
-  const toggleTask = (id) => {
-    setTasks(tasks.map(task => 
-      task.id === id ? { ...task, completed: !task.completed } : task
-    ));
+  const toggleTask = async (id, currentStatus) => {
+    const { data } = await supabase
+      .from('tasks')
+      .update({ is_completed: !currentStatus })
+      .eq('id', id)
+      .select();
+
+    if (data) {
+      setTasks(tasks.map(task => task.id === id ? data[0] : task));
+    }
   };
 
-  const deleteTask = (id) => {
+  const deleteTask = async (id) => {
+    await supabase.from('tasks').delete().eq('id', id);
     setTasks(tasks.filter(task => task.id !== id));
   };
 
@@ -77,15 +104,15 @@ export default function DailyTasks() {
               padding: 'var(--space-md)', backgroundColor: 'var(--bg-panel-hover)', 
               borderRadius: 'var(--radius-sm)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', cursor: 'pointer', flex: 1 }} onClick={() => toggleTask(task.id)}>
-                {task.completed ? <CheckCircle2 size={22} color="var(--accent-emerald)" /> : <Circle size={22} color="var(--text-muted)" />}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-md)', cursor: 'pointer', flex: 1 }} onClick={() => toggleTask(task.id, task.is_completed)}>
+                {task.is_completed ? <CheckCircle2 size={22} color="var(--accent-emerald)" /> : <Circle size={22} color="var(--text-muted)" />}
                 <div>
                   <div style={{ 
-                    color: task.completed ? 'var(--text-muted)' : 'var(--text-main)', 
-                    textDecoration: task.completed ? 'line-through' : 'none',
+                    color: task.is_completed ? 'var(--text-muted)' : 'var(--text-main)', 
+                    textDecoration: task.is_completed ? 'line-through' : 'none',
                     fontSize: '1.05rem', fontWeight: 500
                   }}>
-                    {task.text}
+                    {task.title}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: priorityColors[task.priority || 'Normal'], marginTop: '2px' }}>
                     {task.priority || 'Normal'} Priority

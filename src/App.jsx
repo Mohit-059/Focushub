@@ -33,6 +33,7 @@ import Notes from './pages/Notes';
 import Stats from './pages/Stats';
 import DailyTasks from './pages/DailyTasks';
 import Settings from './pages/Settings';
+import DailyLogs from './pages/DailyLogs';
 
 export default function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -101,7 +102,7 @@ export default function App() {
                 <Route path="/calendar" element={<CalendarView />} />
                 
                 {/* Unbuilt / Future Feature */}
-                <Route path="/code-arena" />
+                <Route path="/daily-logs" element={<DailyLogs/>} />
                 
                 {/* Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
