@@ -11,6 +11,7 @@ export default function CalendarView() {
   const [newTaskNote, setNewTaskNote] = useState('');
   
   const dayViewRef = useRef(null);
+  const dateInputRef = useRef(null);
 
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -50,6 +51,15 @@ export default function CalendarView() {
   
   const nextMonth = () => {
     setCurrentDate(new Date(year, month + 1, 1));
+    setSelectedDate(null);
+  };
+
+  // Handle month picker change
+  const handleMonthJump = (e) => {
+    const val = e.target.value; // format: "YYYY-MM"
+    if (!val) return;
+    const [selectedYear, selectedMonth] = val.split('-');
+    setCurrentDate(new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1));
     setSelectedDate(null);
   };
 
@@ -95,16 +105,35 @@ export default function CalendarView() {
     return e.deadline && e.deadline.startsWith(selectedDate);
   }) : [];
 
+  // Format current year & month for the hidden input value (YYYY-MM)
+  const monthInputVal = `${year}-${String(month + 1).padStart(2, '0')}`;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', minHeight: '100%', paddingBottom: '100px' }}>
       
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+        
+        {/* Clickable Header with Hidden Month/Year Picker */}
+        <div 
+          onClick={() => dateInputRef.current?.showPicker?.()} 
+          style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer', position: 'relative' }}
+          title="Click to jump to month"
+        >
           <CalendarIcon size={28} color="var(--accent-blue)" />
-          <h1 style={{ margin: 0, fontSize: '1.8rem' }}>
+          <h1 style={{ margin: 0, fontSize: '1.8rem', userSelect: 'none' }}>
             {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
           </h1>
+          
+          {/* Hidden native date-picker input overlay */}
+          <input 
+            ref={dateInputRef}
+            type="month"
+            value={monthInputVal}
+            onChange={handleMonthJump}
+            style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 0, height: 0 }}
+          />
         </div>
+
         <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
           <button className="btn-icon" onClick={prevMonth}><ChevronLeft size={20} /></button>
           <button className="btn-icon" onClick={nextMonth}><ChevronRight size={20} /></button>
@@ -112,10 +141,8 @@ export default function CalendarView() {
       </div>
 
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        {/* THE FIX: Width 100% and NO scrolling. Strict grid containment. */}
         <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
           
-          {/* minmax(0, 1fr) ensures columns can shrink aggressively on mobile without breaking */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: '1px solid rgba(255,255,255,0.05)', backgroundColor: 'var(--bg-panel-hover)' }}>
             {daysOfWeek.map(day => (
               <div key={day} style={{ padding: 'var(--space-sm) 2px', textAlign: 'center', fontWeight: 600, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -149,7 +176,7 @@ export default function CalendarView() {
                     cursor: date ? 'pointer' : 'default',
                     transition: 'background-color 0.2s ease',
                     border: isSelected ? '1px solid var(--accent-blue)' : 'none',
-                    overflow: 'hidden' // Absolutely prevents cell stretching
+                    overflow: 'hidden'
                   }}
                 >
                   {date && (
@@ -165,7 +192,7 @@ export default function CalendarView() {
                           <div key={ev.id} style={{ 
                             backgroundColor: 'var(--accent-blue)', 
                             color: '#fff', 
-                            fontSize: '0.65rem', // Scaled down for mobile fit
+                            fontSize: '0.65rem', 
                             padding: '1px 4px', 
                             borderRadius: '3px', 
                             whiteSpace: 'nowrap',

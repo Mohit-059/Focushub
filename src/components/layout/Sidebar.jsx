@@ -3,7 +3,7 @@ import { NavLink, Link } from 'react-router-dom';
 
 import { 
   Home, BookOpen, Brain, Code, Calculator, Calendar,
-  Dumbbell, Flame, CheckSquare, BarChart2, FileText, Settings, X, Mic 
+  Dumbbell, Flame, CheckSquare, BarChart2, FileText, Settings, X, Mic, MessageSquare 
 } from 'lucide-react';
 
 const navItems = [
@@ -21,6 +21,9 @@ const navItems = [
   { name: 'Daily Logs', path: '/code-arena', icon: Code },
   
   { name: 'Study', path: '/study', icon: BookOpen },
+
+  // Added WhatsApp Reminders
+  { name: 'WhatsApp', path: '/whatsapp', icon: MessageSquare, color: 'var(--accent-emerald)' },
   
   { name: 'Stats', path: '/stats', icon: BarChart2 },
   { name: 'Notes', path: '/notes', icon: FileText },
@@ -41,13 +44,13 @@ export default function Sidebar({ isMobileOpen, setMobileOpen }) {
       <aside className={`sidebar ${isMobileOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <Link 
-      to="/" 
-      onClick={() => setMobileOpen(false)} // Closes sidebar on mobile when clicked
-      style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', textDecoration: 'none', color: 'inherit' }}
-    >
-      <Flame size={24} color="var(--accent-blue)" />
-      <span>FocusHub</span>
-    </Link>
+            to="/" 
+            onClick={() => setMobileOpen(false)} // Closes sidebar on mobile when clicked
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', textDecoration: 'none', color: 'inherit' }}
+          >
+            <Flame size={24} color="var(--accent-blue)" />
+            <span>FocusHub</span>
+          </Link>
           {isMobileOpen && (
             <button className="btn-icon mobile-toggle" style={{ marginLeft: 'auto' }} onClick={() => setMobileOpen(false)}>
               <X size={20} />
