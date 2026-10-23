@@ -1,129 +1,176 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { Flame, User, Lock } from 'lucide-react';
-
+import { Flame, Lock, Mail, User, AtSign, ArrowRight } from 'lucide-react';
 
 export default function Auth() {
-  const [displayName, setDisplayName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [username, setUsername] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  
+  // Form states
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLogin, setIsLogin] = useState(true);
-  const [message, setMessage] = useState('');
+  const [username, setUsername] = useState('');
+  const [name, setName] = useState('');
+  
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setMessage('');
+    setErrorMsg('');
+    setSuccessMsg('');
 
-    // Format the username into a dummy email that Supabase accepts
-    const formattedEmail = `${username.toLowerCase().replace(/\s+/g, '')}@focushub.com`;
-
-    try {
-      if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ 
-          email: formattedEmail, 
-          password 
-        });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({ 
-          email: formattedEmail, 
-          password,
-          options: {
-            data: {
-              display_name: displayName // Attach the name to the account
-            }
+    if (isSignUp) {
+      // 1. SIGNUP FLOW (4 Inputs)
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            username: username.trim(),
+            display_name: name.trim()
           }
-        });
-        if (error) throw error;
-        setMessage('Account created successfully! You can now sign in.');
+        }
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+      } else {
+        setSuccessMsg('Account created successfully! Awaiting administrator approval to log in.');
+        setIsSignUp(false); // Switch back to login view
       }
-    } catch (error) {
-      // Clean up the error message so it doesn't show the fake email
-      setMessage(error.message.replace('email', 'username'));
-    } finally {
-      setLoading(false);
+    } else {
+      // 2. LOGIN FLOW (2 Inputs)
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+      }
     }
+
+    setLoading(false);
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: 'var(--bg-main)', padding: 'var(--space-md)' }}>
-      <div className="card" style={{ width: '100%', maxWidth: '400px', padding: 'var(--space-xl)' }}>
+    <div style={{ 
+      height: '100vh', 
+      display: 'flex', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      backgroundColor: 'var(--bg-main)', 
+      padding: '20px' 
+    }}>
+      <div className="card" style={{ width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', padding: '40px 30px' }}>
         
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 'var(--space-xl)' }}>
-          <Flame size={40} color="var(--accent-blue)" style={{ marginBottom: 'var(--space-sm)' }} />
-          <h1 style={{ margin: 0, fontSize: '1.8rem' }}>FocusHub</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px', textAlign: 'center' }}>
-            {isLogin ? 'Welcome back, builder.' : 'Initialize your workspace.'}
+        {/* Logo & Header */}
+        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+          <div style={{ backgroundColor: 'rgba(56, 189, 248, 0.1)', padding: '12px', borderRadius: '50%', display: 'flex' }}>
+            <Flame size={32} color="var(--accent-blue)" />
+          </div>
+          <h1 style={{ margin: 0, fontSize: '1.8rem', color: 'var(--text-main)' }}>FocusHub</h1>
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+            {isSignUp ? 'Request access to your private workspace' : 'Sign in to your secure dashboard'}
           </p>
         </div>
 
+        {/* Error / Success Banners */}
+        {errorMsg && (
+          <div style={{ padding: '10px 14px', backgroundColor: 'rgba(244, 63, 94, 0.1)', border: '1px solid var(--accent-pink)', borderRadius: 'var(--radius-sm)', color: 'var(--accent-pink)', fontSize: '0.85rem' }}>
+            {errorMsg}
+          </div>
+        )}
+
+        {successMsg && (
+          <div style={{ padding: '10px 14px', backgroundColor: 'rgba(52, 211, 153, 0.1)', border: '1px solid var(--accent-emerald)', borderRadius: 'var(--radius-sm)', color: 'var(--accent-emerald)', fontSize: '0.85rem' }}>
+            {successMsg}
+          </div>
+        )}
+
+        {/* Form */}
         <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
           
-          {!isLogin && (
-            <div style={{ position: 'relative' }}>
-              <User size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-              <input 
-                type="text" 
-                placeholder="Display Name (e.g. MOhit)" 
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                required={!isLogin}
-                style={{ width: '100%', padding: '12px 12px 12px 40px', backgroundColor: 'var(--bg-panel-hover)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-md)', color: 'white', boxSizing: 'border-box', marginBottom: '8px' }}
-              />
-            </div>
+          {/* Extra fields shown ONLY during Signup */}
+          {isSignUp && (
+            <>
+              <div style={{ position: 'relative' }}>
+                <AtSign size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="text" 
+                  className="input" 
+                  placeholder="Username" 
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  style={{ paddingLeft: '40px', width: '100%', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+
+              <div style={{ position: 'relative' }}>
+                <User size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                <input 
+                  type="text" 
+                  className="input" 
+                  placeholder="Full Name" 
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  style={{ paddingLeft: '40px', width: '100%', boxSizing: 'border-box' }}
+                  required
+                />
+              </div>
+            </>
           )}
-          
+
+          {/* Standard Email Field */}
           <div style={{ position: 'relative' }}>
-            <User size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+            <Mail size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
-              type="text" 
-              placeholder="Username" 
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email" 
+              className="input" 
+              placeholder="Email address" 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{ paddingLeft: '40px', width: '100%', boxSizing: 'border-box' }}
               required
-              style={{ width: '100%', padding: '12px 12px 12px 40px', backgroundColor: 'var(--bg-panel-hover)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-md)', color: 'white', boxSizing: 'border-box' }}
             />
           </div>
 
+          {/* Standard Password Field */}
           <div style={{ position: 'relative' }}>
-            <Lock size={18} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
+            <Lock size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
             <input 
               type="password" 
+              className="input" 
               placeholder="Password" 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              style={{ paddingLeft: '40px', width: '100%', boxSizing: 'border-box' }}
               required
-              style={{ width: '100%', padding: '12px 12px 12px 40px', backgroundColor: 'var(--bg-panel-hover)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 'var(--radius-md)', color: 'white', boxSizing: 'border-box' }}
             />
           </div>
 
-          {message && (
-            <div style={{ color: message.includes('created') ? 'var(--accent-emerald)' : 'var(--accent-pink)', fontSize: '0.85rem', textAlign: 'center' }}>
-              {message}
-            </div>
-          )}
-
           <button 
             type="submit" 
+            className="btn btn-primary" 
+            style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '12px', marginTop: '8px' }}
             disabled={loading}
-            style={{ width: '100%', padding: '12px', backgroundColor: 'var(--accent-blue)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', marginTop: 'var(--space-sm)' }}
           >
-            {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
+            {loading ? 'Processing...' : (isSignUp ? 'Request Access' : 'Sign In')} <ArrowRight size={16} />
           </button>
         </form>
 
-        <div style={{ textAlign: 'center', marginTop: 'var(--space-lg)' }}>
-          <button 
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setMessage('');
-            }} 
-            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.9rem' }}
+        {/* Toggle between Login and Signup */}
+        <div style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+          {isSignUp ? 'Already have an account?' : "Don't have an account yet?"}{' '}
+          <span 
+            onClick={() => { setIsSignUp(!isSignUp); setErrorMsg(''); setSuccessMsg(''); }}
+            style={{ color: 'var(--accent-blue)', cursor: 'pointer', fontWeight: 600 }}
           >
-            {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
-          </button>
+            {isSignUp ? 'Sign In' : 'Sign Up'}
+          </span>
         </div>
 
       </div>

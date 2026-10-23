@@ -9,6 +9,7 @@ import TongueTwisters from './components/study/TongueTwisters';
 import './styles/global.css';
 import './styles/layout.css';
 import './styles/components.css'; 
+import AdminPanel from './pages/AdminPannel';
 
 // Components & Layout
 import Sidebar from './components/layout/Sidebar';
@@ -103,6 +104,8 @@ export default function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/study-hub" element={<StudyHub />} />
                 <Route path="/calendar" element={<CalendarView />} />
+
+                <Route path="/admin" element={<AdminPanel />} />
                 
                 {/* Unbuilt / Future Feature */}
                 <Route path="/daily-logs" element={<DailyLogs/>} />
