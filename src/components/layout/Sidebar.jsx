@@ -18,13 +18,10 @@ const navItems = [
   { name: 'Calendar', path: '/calendar', icon: Calendar },
   { name: 'Gym Logs', path: '/gym', icon: Dumbbell },
 
-  { name: 'Daily Logs', path: '/code-arena', icon: Code },
+  { name: 'Daily Logs', path: '/daily-logs', icon: Code },
   
   { name: 'Study', path: '/study', icon: BookOpen },
 
-  // Added WhatsApp Reminders
-  { name: 'WhatsApp', path: '/whatsapp', icon: MessageSquare, color: 'var(--accent-emerald)' },
-  
   { name: 'Stats', path: '/stats', icon: BarChart2 },
   { name: 'Notes', path: '/notes', icon: FileText },
   { name: 'Settings', path: '/settings', icon: Settings },

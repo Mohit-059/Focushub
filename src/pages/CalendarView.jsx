@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X, AlignLeft, Trash2 } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Plus, X, AlignLeft, Trash2, Mail, CheckCircle2, Send } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 export default function CalendarView() {
@@ -9,6 +9,10 @@ export default function CalendarView() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskNote, setNewTaskNote] = useState('');
+
+  const [userEmail, setUserEmail] = useState('');
+  const [emailStatus, setEmailStatus] = useState('');
+  const [upcomingTasks, setUpcomingTasks] = useState([]);
   
   const dayViewRef = useRef(null);
   const dateInputRef = useRef(null);
@@ -17,6 +21,7 @@ export default function CalendarView() {
 
   useEffect(() => {
     fetchMonthEvents();
+    fetchSavedEmail();
   }, [currentDate]);
 
   const fetchMonthEvents = async () => {
@@ -25,7 +30,65 @@ export default function CalendarView() {
       .select('*')
       .eq('task_type', 'calendar');
       
-    if (data) setEvents(data);
+    if (data) {
+      setEvents(data);
+      calculateUpcomingTasks(data);
+    }
+  };
+
+  const fetchSavedEmail = async () => {
+    const { data } = await supabase
+      .from('email_subscriptions')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+    if (data) setUserEmail(data.email);
+  };
+
+  const calculateUpcomingTasks = (allEvents) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const relevant = allEvents.filter(task => {
+      if (!task.deadline) return false;
+      const taskDate = new Date(task.deadline);
+      taskDate.setHours(0, 0, 0, 0);
+      
+      const diffTime = taskDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      return diffDays >= 0 && diffDays <= 2;
+    });
+    setUpcomingTasks(relevant);
+  };
+
+  const handleSaveEmail = async (e) => {
+    e.preventDefault();
+    if (!userEmail.trim()) return;
+
+    const { data, error } = await supabase
+      .from('email_subscriptions')
+      .upsert([{ email: userEmail.trim() }], { onConflict: 'email' })
+      .select();
+
+    if (data) {
+      setEmailStatus('Mailbox saved successfully!');
+      setTimeout(() => setEmailStatus(''), 3000);
+    } else if (error) {
+      setEmailStatus('Error saving email.');
+    }
+  };
+
+  const sendEmailBriefing = () => {
+    if (!userEmail) {
+      alert('Please enter and save your email address first.');
+      return;
+    }
+    const subject = encodeURIComponent('FocusHub Task Briefing: Upcoming Deadlines');
+    const bodyContent = upcomingTasks.map(t => `- [Due: ${t.deadline}] ${t.title}${t.note ? `\n  Note: ${t.note}` : ''}`).join('\n\n');
+    const body = encodeURIComponent(`Here is your clutter-free task digest (0-2 day window):\n\n${bodyContent}\n\nStay locked in,\nFocusHub`);
+    
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${userEmail}&su=${subject}&body=${body}`, '_blank');
   };
 
   const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
@@ -54,9 +117,8 @@ export default function CalendarView() {
     setSelectedDate(null);
   };
 
-  // Handle month picker change
   const handleMonthJump = (e) => {
-    const val = e.target.value; // format: "YYYY-MM"
+    const val = e.target.value;
     if (!val) return;
     const [selectedYear, selectedMonth] = val.split('-');
     setCurrentDate(new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1, 1));
@@ -88,7 +150,9 @@ export default function CalendarView() {
       .select();
 
     if (data) {
-      setEvents([...events, data[0]]);
+      const updatedEvents = [...events, data[0]];
+      setEvents(updatedEvents);
+      calculateUpcomingTasks(updatedEvents);
       setNewTaskTitle('');
       setNewTaskNote('');
     } else if (error) {
@@ -98,22 +162,22 @@ export default function CalendarView() {
 
   const deleteTask = async (id) => {
     await supabase.from('tasks').delete().eq('id', id);
-    setEvents(events.filter(ev => ev.id !== id));
+    const updatedEvents = events.filter(ev => ev.id !== id);
+    setEvents(updatedEvents);
+    calculateUpcomingTasks(updatedEvents);
   };
 
   const selectedDayEvents = selectedDate ? events.filter(e => {
     return e.deadline && e.deadline.startsWith(selectedDate);
   }) : [];
 
-  // Format current year & month for the hidden input value (YYYY-MM)
   const monthInputVal = `${year}-${String(month + 1).padStart(2, '0')}`;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', minHeight: '100%', paddingBottom: '100px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)', minHeight: '100%', paddingBottom: '100px', width: '100%', boxSizing: 'border-box' }}>
       
+      {/* Calendar Header Navigation */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '15px' }}>
-        
-        {/* Clickable Header with Hidden Month/Year Picker */}
         <div 
           onClick={() => dateInputRef.current?.showPicker?.()} 
           style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer', position: 'relative' }}
@@ -123,8 +187,6 @@ export default function CalendarView() {
           <h1 style={{ margin: 0, fontSize: '1.8rem', userSelect: 'none' }}>
             {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
           </h1>
-          
-          {/* Hidden native date-picker input overlay */}
           <input 
             ref={dateInputRef}
             type="month"
@@ -140,9 +202,9 @@ export default function CalendarView() {
         </div>
       </div>
 
+      {/* Main Calendar Grid */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
-          
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', borderBottom: '1px solid rgba(255,255,255,0.05)', backgroundColor: 'var(--bg-panel-hover)' }}>
             {daysOfWeek.map(day => (
               <div key={day} style={{ padding: 'var(--space-sm) 2px', textAlign: 'center', fontWeight: 600, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -186,7 +248,6 @@ export default function CalendarView() {
                           {date}
                         </span>
                       </div>
-                      
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', overflowY: 'hidden', flex: 1 }}>
                         {dayEvents.map(ev => (
                           <div key={ev.id} style={{ 
@@ -209,10 +270,10 @@ export default function CalendarView() {
               );
             })}
           </div>
-
         </div>
       </div>
 
+      {/* Selected Day Agenda View */}
       {selectedDate && (
         <div ref={dayViewRef} className="card" style={{ borderTop: '3px solid var(--accent-blue)', marginTop: 'var(--space-md)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)' }}>
@@ -250,14 +311,12 @@ export default function CalendarView() {
           <div style={{ paddingTop: 'var(--space-md)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
             <h4 style={{ margin: '0 0 var(--space-sm) 0', fontSize: '1rem' }}>Add Calendar Event</h4>
             <form onSubmit={handleAddTask} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
-              
               <input 
                 className="input" 
                 placeholder="Event name..." 
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
               />
-
               <textarea 
                 className="input" 
                 placeholder="Description or notes..." 
@@ -265,15 +324,64 @@ export default function CalendarView() {
                 onChange={(e) => setNewTaskNote(e.target.value)}
                 style={{ resize: 'vertical', minHeight: '80px', fontFamily: 'inherit' }}
               />
-
               <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start', padding: '10px 20px' }}>
                 <Plus size={18} /> Save Event
               </button>
             </form>
           </div>
-
         </div>
       )}
+
+      {/* CLEANLY REDESIGNED RESPONSIVE MAILBOX CARD AT THE BOTTOM */}
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
+        
+        {/* Header row with inline icon and title to prevent awkward wrapping */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)' }}>
+          <div style={{ padding: '8px', backgroundColor: 'rgba(56, 189, 248, 0.1)', borderRadius: '8px', display: 'flex', flexShrink: 0 }}>
+            <Mail size={20} color="var(--accent-blue)" />
+          </div>
+          <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-main)', lineHeight: '1.3' }}>Email Task Digest (0-2 Day Window)</h3>
+        </div>
+
+        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+          Enter your email to scan calendar deadlines and send clean task briefings for tasks due today, tomorrow, or in 2 days.
+        </p>
+
+        {emailStatus && (
+          <div style={{ padding: '8px 12px', backgroundColor: 'rgba(52, 211, 153, 0.1)', border: '1px solid var(--accent-emerald)', borderRadius: 'var(--radius-sm)', color: 'var(--accent-emerald)', fontSize: '0.8rem' }}>
+            {emailStatus}
+          </div>
+        )}
+
+        {/* Fully responsive form container stacking elements on smaller screens */}
+        <form onSubmit={handleSaveEmail} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', width: '100%', boxSizing: 'border-box' }}>
+          <input 
+            type="email" 
+            className="input" 
+            placeholder="Enter your email address..." 
+            value={userEmail}
+            onChange={(e) => setUserEmail(e.target.value)}
+            style={{ width: '100%', boxSizing: 'border-box' }}
+            required
+          />
+          <div style={{ display: 'flex', gap: 'var(--space-sm)', width: '100%', flexWrap: 'wrap' }}>
+            <button type="submit" className="btn" style={{ flex: '1 1 130px', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: 'var(--accent-blue)', border: '1px solid var(--accent-blue)', justifyContent: 'center' }}>
+              <CheckCircle2 size={16} /> Save Mail
+            </button>
+            <button type="button" className="btn btn-primary" onClick={sendEmailBriefing} style={{ flex: '1 1 160px', backgroundColor: 'var(--accent-blue)', color: '#fff', justifyContent: 'center' }}>
+              <Send size={16} /> Send Briefing
+            </button>
+          </div>
+        </form>
+
+        {upcomingTasks.length > 0 && (
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', paddingTop: '4px' }}>
+            <CalendarIcon size={14} color="var(--accent-blue)" />
+            <span>{upcomingTasks.length} upcoming task(s) currently queued for email delivery.</span>
+          </div>
+        )}
+      </div>
+
     </div>
   );
 }

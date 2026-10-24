@@ -36,8 +36,6 @@ import DailyTasks from './pages/DailyTasks';
 import Settings from './pages/Settings';
 import DailyLogs from './pages/DailyLogs';
 
-// WhatsApp Reminders Page
-import WhatsAppReminders from './pages/WhatsAppReminders';
 
 export default function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -110,8 +108,6 @@ export default function App() {
                 {/* Unbuilt / Future Feature */}
                 <Route path="/daily-logs" element={<DailyLogs/>} />
 
-                {/* WhatsApp Reminders Route */}
-                <Route path="/whatsapp" element={<WhatsAppReminders />} />
                 
                 {/* Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
